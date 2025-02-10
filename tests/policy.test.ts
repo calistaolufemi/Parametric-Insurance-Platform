@@ -1,21 +1,78 @@
+import { describe, it, expect, beforeEach } from "vitest"
 
-import { describe, expect, it } from "vitest";
+// Mock storage for policies
+const policies = new Map()
+let nextPolicyId = 1
 
-const accounts = simnet.getAccounts();
-const address1 = accounts.get("wallet_1")!;
+// Mock functions to simulate contract behavior
+function createPolicy(
+    owner: string,
+    premium: number,
+    coverage: number,
+    startDate: number,
+    endDate: number,
+    parameters: Array<{ key: string; value: string }>,
+) {
+  if (endDate <= startDate) throw new Error("Invalid dates")
+  const policyId = nextPolicyId++
+  policies.set(policyId, { owner, premium, coverage, startDate, endDate, isActive: true, parameters })
+  return policyId
+}
 
-/*
-  The test below is an example. To learn more, read the testing documentation here:
-  https://docs.hiro.so/stacks/clarinet-js-sdk
-*/
+function cancelPolicy(policyId: number, sender: string) {
+  const policy = policies.get(policyId)
+  if (!policy) throw new Error("Policy not found")
+  if (policy.owner !== sender) throw new Error("Unauthorized")
+  policy.isActive = false
+  policies.set(policyId, policy)
+  return true
+}
 
-describe("example tests", () => {
-  it("ensures simnet is well initalised", () => {
-    expect(simnet.blockHeight).toBeDefined();
-  });
+function getPolicy(policyId: number) {
+  return policies.get(policyId)
+}
 
-  // it("shows an example", () => {
-  //   const { result } = simnet.callReadOnlyFn("counter", "get-counter", [], address1);
-  //   expect(result).toBeUint(0);
-  // });
-});
+function isPolicyActive(policyId: number) {
+  const policy = policies.get(policyId)
+  return policy ? policy.isActive : false
+}
+
+describe("Policy Contract", () => {
+  beforeEach(() => {
+    policies.clear()
+    nextPolicyId = 1
+  })
+  
+  it("should create a policy", () => {
+    const policyId = createPolicy("owner1", 100, 1000, 1000, 2000, [{ key: "weather", value: "sunny" }])
+    expect(policyId).toBe(1)
+    const policy = getPolicy(policyId)
+    expect(policy).toBeDefined()
+    expect(policy.owner).toBe("owner1")
+    expect(policy.isActive).toBe(true)
+  })
+  
+  it("should not create a policy with invalid dates", () => {
+    expect(() => createPolicy("owner1", 100, 1000, 2000, 1000, [])).toThrow("Invalid dates")
+  })
+  
+  it("should cancel a policy", () => {
+    const policyId = createPolicy("owner1", 100, 1000, 1000, 2000, [])
+    const result = cancelPolicy(policyId, "owner1")
+    expect(result).toBe(true)
+    expect(isPolicyActive(policyId)).toBe(false)
+  })
+  
+  it("should not cancel a policy if not the owner", () => {
+    const policyId = createPolicy("owner1", 100, 1000, 1000, 2000, [])
+    expect(() => cancelPolicy(policyId, "owner2")).toThrow("Unauthorized")
+  })
+  
+  it("should check if a policy is active", () => {
+    const policyId = createPolicy("owner1", 100, 1000, 1000, 2000, [])
+    expect(isPolicyActive(policyId)).toBe(true)
+    cancelPolicy(policyId, "owner1")
+    expect(isPolicyActive(policyId)).toBe(false)
+  })
+})
+
